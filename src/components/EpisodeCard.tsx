@@ -35,15 +35,22 @@ export const EpisodeCard: React.FC<EpisodeCardProps> = ({ episode }) => {
     playEpisode(episode);
   };
 
+  const [imgSrc, setImgSrc] = React.useState<string>(episode.cover_image || '/images/podcast_cover.jpg');
+
+  React.useEffect(() => {
+    setImgSrc(episode.cover_image || '/images/podcast_cover.jpg');
+  }, [episode.cover_image]);
+
   return (
     <div className="group bg-white dark:bg-gray-900 rounded-3xl p-5 border border-gray-200/80 dark:border-gray-800/80 hover:border-brand-500/50 dark:hover:border-brand-500/50 transition-all duration-300 shadow-sm hover:shadow-xl flex flex-col justify-between">
       <div>
         {/* Artwork Header */}
         <div className="relative aspect-square w-full rounded-2xl overflow-hidden mb-4 bg-gray-100 dark:bg-gray-800">
           <Image
-            src={episode.cover_image}
+            src={imgSrc}
             alt={episode.title}
             fill
+            onError={() => setImgSrc('/images/podcast_cover.jpg')}
             className="object-cover group-hover:scale-105 transition-transform duration-500"
           />
           

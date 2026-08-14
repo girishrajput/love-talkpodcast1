@@ -123,9 +123,9 @@ export default function EpisodeDetailPage({ params }: { params: { slug: string }
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
           
           {/* Cover Image */}
-          <div className="lg:col-span-4 relative aspect-square w-full max-w-sm mx-auto rounded-3xl overflow-hidden shadow-2xl border-4 border-white/10">
+          <div className="lg:col-span-4 relative aspect-square w-full max-w-sm mx-auto rounded-3xl overflow-hidden shadow-2xl border-4 border-white/10 bg-gray-800">
             <Image
-              src={episode.cover_image}
+              src={episode.cover_image || '/images/podcast_cover.jpg'}
               alt={episode.title}
               fill
               className="object-cover"

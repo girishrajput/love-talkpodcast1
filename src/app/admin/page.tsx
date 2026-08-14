@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import Image from 'next/image';
 import { 
   ShieldCheck, 
@@ -17,11 +17,28 @@ import {
   Download, 
   FileText,
   Sparkles,
-  X
+  X,
+  UploadCloud,
+  Music,
+  ImageIcon,
+  Loader2,
+  AlertCircle,
+  RefreshCw,
+  FileAudio,
+  Upload,
+  Link as LinkIcon
 } from 'lucide-react';
 import { getStoredSubscribers } from '@/lib/data';
 import { Episode, Language } from '@/lib/types';
 import { fetchEpisodes, createEpisodeApi, updateEpisodeApi, deleteEpisodeApi } from '@/lib/api';
+
+function formatBytes(bytes: number): string {
+  if (bytes === 0) return '0 Bytes';
+  const k = 1024;
+  const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+}
 
 export default function AdminPage() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -48,6 +65,21 @@ export default function AdminPage() {
   const [tagsInput, setTagsInput] = useState('Self-Love, Relationships');
   const [transcriptEn, setTranscriptEn] = useState('');
   const [transcriptHi, setTranscriptHi] = useState('');
+
+  // Upload States
+  const [isUploadingAudio, setIsUploadingAudio] = useState(false);
+  const [audioFileDetails, setAudioFileDetails] = useState<{ name: string; size: number } | null>(null);
+  const [audioError, setAudioError] = useState('');
+
+  const [isUploadingCover, setIsUploadingCover] = useState(false);
+  const [coverFileDetails, setCoverFileDetails] = useState<{ name: string; size: number } | null>(null);
+  const [coverError, setCoverError] = useState('');
+
+  const [showManualAudioInput, setShowManualAudioInput] = useState(false);
+  const [showManualCoverInput, setShowManualCoverInput] = useState(false);
+
+  const audioFileInputRef = useRef<HTMLInputElement>(null);
+  const coverFileInputRef = useRef<HTMLInputElement>(null);
 
   const loadData = async () => {
     try {
@@ -84,13 +116,25 @@ export default function AdminPage() {
     setSlug(generated);
   };
 
+  const resetUploadStates = () => {
+    setIsUploadingAudio(false);
+    setAudioFileDetails(null);
+    setAudioError('');
+    setIsUploadingCover(false);
+    setCoverFileDetails(null);
+    setCoverError('');
+    setShowManualAudioInput(false);
+    setShowManualCoverInput(false);
+  };
+
   const openCreateModal = () => {
+    resetUploadStates();
     setEditingEpisode(null);
     setTitle('');
     setEpNum(episodes.length + 1);
     setSlug('');
     setDesc('');
-    setAudioUrl('https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3');
+    setAudioUrl('');
     setDuration(1800);
     setCoverImg('/images/podcast_cover.jpg');
     setLanguage('english');
@@ -101,6 +145,7 @@ export default function AdminPage() {
   };
 
   const openEditModal = (ep: Episode) => {
+    resetUploadStates();
     setEditingEpisode(ep);
     setTitle(ep.title);
     setEpNum(ep.episode_number);
@@ -116,8 +161,82 @@ export default function AdminPage() {
     setIsModalOpen(true);
   };
 
+  // Upload File Handler (MP3 or Image)
+  const handleFileUpload = async (file: File, type: 'audio' | 'image') => {
+    if (!file) return;
+
+    const ext = file.name.split('.').pop()?.toLowerCase() || '';
+
+    if (type === 'audio') {
+      if (ext !== 'mp3' && file.type !== 'audio/mpeg' && file.type !== 'audio/mp3') {
+        setAudioError('Invalid audio file type. Only MP3 (.mp3) files are supported.');
+        return;
+      }
+      if (file.size > 50 * 1024 * 1024) {
+        setAudioError(`File size (${formatBytes(file.size)}) exceeds the 50MB maximum limit.`);
+        return;
+      }
+      setAudioError('');
+      setIsUploadingAudio(true);
+      setAudioFileDetails({ name: file.name, size: file.size });
+    } else {
+      if (!['jpg', 'jpeg', 'png', 'webp'].includes(ext) && !file.type.startsWith('image/')) {
+        setCoverError('Invalid image file type. Only JPG, JPEG, PNG, and WebP images are allowed.');
+        return;
+      }
+      if (file.size > 10 * 1024 * 1024) {
+        setCoverError(`File size (${formatBytes(file.size)}) exceeds the 10MB maximum limit.`);
+        return;
+      }
+      setCoverError('');
+      setIsUploadingCover(true);
+      setCoverFileDetails({ name: file.name, size: file.size });
+    }
+
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('type', type);
+
+      const res = await fetch('/api/upload', {
+        method: 'POST',
+        body: formData
+      });
+
+      const json = await res.json();
+      if (!res.ok || !json.success) {
+        throw new Error(json.error || 'Upload failed');
+      }
+
+      if (type === 'audio') {
+        setAudioUrl(json.url);
+        setIsUploadingAudio(false);
+      } else {
+        setCoverImg(json.url);
+        setIsUploadingCover(false);
+      }
+    } catch (err: any) {
+      console.error('Upload Error:', err);
+      if (type === 'audio') {
+        setAudioError(err.message || 'Audio upload failed. Please try again.');
+        setIsUploadingAudio(false);
+        setAudioFileDetails(null);
+      } else {
+        setCoverError(err.message || 'Image upload failed. Please try again.');
+        setIsUploadingCover(false);
+        setCoverFileDetails(null);
+      }
+    }
+  };
+
   const handleSaveEpisode = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (!audioUrl) {
+      setAudioError('Please upload an MP3 audio file or enter an audio URL.');
+      return;
+    }
+
     const tagsArr = tagsInput.split(',').map(t => t.trim()).filter(Boolean);
 
     const payload = {
@@ -127,7 +246,7 @@ export default function AdminPage() {
       description: desc,
       audio_url: audioUrl,
       audio_duration: duration,
-      cover_image: coverImg,
+      cover_image: coverImg || '/images/podcast_cover.jpg',
       language,
       tags: tagsArr,
       transcript_en: transcriptEn,
@@ -260,7 +379,7 @@ export default function AdminPage() {
             <thead>
               <tr className="bg-gray-50 dark:bg-gray-950 text-gray-500 border-b border-gray-200 dark:border-gray-800">
                 <th className="p-4 font-semibold">Ep #</th>
-                <th className="p-4 font-semibold">Title & Slug</th>
+                <th className="p-4 font-semibold">Title & Cover</th>
                 <th className="p-4 font-semibold">Language</th>
                 <th className="p-4 font-semibold">Publish Date</th>
                 <th className="p-4 font-semibold">Status</th>
@@ -272,8 +391,20 @@ export default function AdminPage() {
                 <tr key={ep.id} className="hover:bg-gray-50/50 dark:hover:bg-gray-800/30">
                   <td className="p-4 font-bold font-mono text-brand-600">#{ep.episode_number}</td>
                   <td className="p-4 max-w-xs">
-                    <p className="font-bold line-clamp-1 text-gray-900 dark:text-white">{ep.title}</p>
-                    <p className="text-[11px] text-gray-400 font-mono line-clamp-1">/episodes/{ep.slug}</p>
+                    <div className="flex items-center gap-3">
+                      <div className="relative w-10 h-10 rounded-lg overflow-hidden flex-shrink-0 bg-gray-200 dark:bg-gray-800 border">
+                        <Image
+                          src={ep.cover_image || '/images/podcast_cover.jpg'}
+                          alt={ep.title}
+                          fill
+                          className="object-cover"
+                        />
+                      </div>
+                      <div>
+                        <p className="font-bold line-clamp-1 text-gray-900 dark:text-white">{ep.title}</p>
+                        <p className="text-[11px] text-gray-400 font-mono line-clamp-1">/episodes/{ep.slug}</p>
+                      </div>
+                    </div>
                   </td>
                   <td className="p-4 capitalize">
                     <span className={`px-2 py-0.5 rounded-full text-[11px] font-semibold ${
@@ -369,7 +500,7 @@ export default function AdminPage() {
               </button>
             </div>
 
-            <form onSubmit={handleSaveEpisode} className="space-y-4 text-xs sm:text-sm">
+            <form onSubmit={handleSaveEpisode} className="space-y-5 text-xs sm:text-sm">
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div className="sm:col-span-2">
                   <label className="block font-bold text-gray-700 dark:text-gray-300 mb-1">Title *</label>
@@ -418,18 +549,241 @@ export default function AdminPage() {
                 />
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block font-bold text-gray-700 dark:text-gray-300 mb-1">Audio File URL (MP3)</label>
-                  <input
-                    type="text"
-                    required
-                    value={audioUrl}
-                    onChange={(e) => setAudioUrl(e.target.value)}
-                    className="w-full px-4 py-2.5 rounded-xl bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white font-mono text-xs"
-                  />
+              {/* ===== EPISODE AUDIO (MP3) UPLOAD FIELD ===== */}
+              <div className="space-y-2 p-4 bg-gray-50 dark:bg-gray-800/60 rounded-2xl border border-gray-200 dark:border-gray-700">
+                <div className="flex items-center justify-between">
+                  <label className="font-bold text-gray-800 dark:text-gray-200 flex items-center gap-2">
+                    <Music className="w-4 h-4 text-brand-500" /> Episode Audio (MP3) *
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => setShowManualAudioInput(!showManualAudioInput)}
+                    className="text-[11px] font-semibold text-brand-600 hover:underline flex items-center gap-1"
+                  >
+                    <LinkIcon className="w-3 h-3" /> {showManualAudioInput ? 'Use File Upload' : 'Enter URL Manually'}
+                  </button>
                 </div>
 
+                {/* Uploaded Audio Preview Card */}
+                {audioUrl && !isUploadingAudio && !showManualAudioInput ? (
+                  <div className="p-3 bg-white dark:bg-gray-900 rounded-xl border border-emerald-500/30 space-y-2">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-3 overflow-hidden">
+                        <div className="w-9 h-9 rounded-lg bg-emerald-500/10 text-emerald-600 flex items-center justify-center flex-shrink-0">
+                          <FileAudio className="w-5 h-5" />
+                        </div>
+                        <div className="truncate">
+                          <p className="font-bold text-xs text-gray-900 dark:text-white truncate">
+                            {audioFileDetails?.name || audioUrl.split('/').pop()}
+                          </p>
+                          <p className="text-[11px] text-gray-400 font-mono">
+                            {audioFileDetails ? formatBytes(audioFileDetails.size) : 'Uploaded Audio Source'}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => audioFileInputRef.current?.click()}
+                          className="px-2.5 py-1 rounded-lg bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 text-xs font-bold text-gray-700 dark:text-gray-300 flex items-center gap-1"
+                        >
+                          <RefreshCw className="w-3 h-3" /> Replace
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setAudioUrl('');
+                            setAudioFileDetails(null);
+                          }}
+                          className="p-1.5 rounded-lg bg-rose-50 text-rose-600 hover:bg-rose-600 hover:text-white"
+                          title="Remove Audio"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Audio Player Preview */}
+                    <div className="pt-2 border-t border-gray-100 dark:border-gray-800">
+                      <audio controls src={audioUrl} className="w-full h-8" />
+                    </div>
+                  </div>
+                ) : isUploadingAudio ? (
+                  /* Audio Uploading State */
+                  <div className="p-4 bg-white dark:bg-gray-900 rounded-xl border border-brand-500/40 flex items-center gap-3">
+                    <Loader2 className="w-5 h-5 text-brand-600 animate-spin flex-shrink-0" />
+                    <div>
+                      <p className="font-bold text-xs text-gray-900 dark:text-white">Uploading MP3 file...</p>
+                      <p className="text-[11px] text-gray-400 font-mono">
+                        {audioFileDetails ? `${audioFileDetails.name} (${formatBytes(audioFileDetails.size)})` : 'Please wait'}
+                      </p>
+                    </div>
+                  </div>
+                ) : showManualAudioInput ? (
+                  /* Manual Audio URL Input */
+                  <div>
+                    <input
+                      type="text"
+                      placeholder="https://example.com/audio.mp3 or /uploads/audio/..."
+                      value={audioUrl}
+                      onChange={(e) => setAudioUrl(e.target.value)}
+                      className="w-full px-4 py-2.5 rounded-xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white font-mono text-xs"
+                    />
+                  </div>
+                ) : (
+                  /* File Upload Dropzone */
+                  <div
+                    onClick={() => audioFileInputRef.current?.click()}
+                    className="border-2 border-dashed border-gray-300 dark:border-gray-700 hover:border-brand-500 rounded-xl p-5 text-center bg-white dark:bg-gray-900 cursor-pointer transition-colors space-y-2 group"
+                  >
+                    <UploadCloud className="w-8 h-8 text-gray-400 group-hover:text-brand-500 mx-auto transition-colors" />
+                    <div>
+                      <p className="font-bold text-xs text-gray-800 dark:text-gray-200">
+                        Click to upload Episode MP3 Audio
+                      </p>
+                      <p className="text-[11px] text-gray-400 mt-0.5">
+                        MP3 files only, maximum file size 50MB
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                <input
+                  ref={audioFileInputRef}
+                  type="file"
+                  accept=".mp3,audio/mpeg,audio/mp3"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) handleFileUpload(file, 'audio');
+                  }}
+                />
+
+                {audioError && (
+                  <p className="text-xs text-rose-500 font-semibold flex items-center gap-1">
+                    <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" /> {audioError}
+                  </p>
+                )}
+              </div>
+
+              {/* ===== EPISODE BANNER / COVER IMAGE UPLOAD FIELD ===== */}
+              <div className="space-y-2 p-4 bg-gray-50 dark:bg-gray-800/60 rounded-2xl border border-gray-200 dark:border-gray-700">
+                <div className="flex items-center justify-between">
+                  <label className="font-bold text-gray-800 dark:text-gray-200 flex items-center gap-2">
+                    <ImageIcon className="w-4 h-4 text-brand-500" /> Episode Banner / Cover Image
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => setShowManualCoverInput(!showManualCoverInput)}
+                    className="text-[11px] font-semibold text-brand-600 hover:underline flex items-center gap-1"
+                  >
+                    <LinkIcon className="w-3 h-3" /> {showManualCoverInput ? 'Use File Upload' : 'Enter URL Manually'}
+                  </button>
+                </div>
+
+                {/* Uploaded Cover Image Preview Card */}
+                {coverImg && !isUploadingCover && !showManualCoverInput ? (
+                  <div className="p-3 bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 flex items-center justify-between gap-4">
+                    <div className="flex items-center gap-3 overflow-hidden">
+                      <div className="relative w-16 h-16 rounded-xl overflow-hidden flex-shrink-0 border bg-gray-100">
+                        <Image
+                          src={coverImg}
+                          alt="Cover Preview"
+                          fill
+                          className="object-cover"
+                        />
+                      </div>
+                      <div className="truncate">
+                        <p className="font-bold text-xs text-gray-900 dark:text-white truncate">
+                          {coverFileDetails?.name || coverImg.split('/').pop()}
+                        </p>
+                        <p className="text-[11px] text-gray-400 font-mono">
+                          {coverFileDetails ? formatBytes(coverFileDetails.size) : 'Banner Image Active'}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => coverFileInputRef.current?.click()}
+                        className="px-2.5 py-1 rounded-lg bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 text-xs font-bold text-gray-700 dark:text-gray-300 flex items-center gap-1"
+                      >
+                        <RefreshCw className="w-3 h-3" /> Replace
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setCoverImg('/images/podcast_cover.jpg');
+                          setCoverFileDetails(null);
+                        }}
+                        className="p-1.5 rounded-lg bg-rose-50 text-rose-600 hover:bg-rose-600 hover:text-white"
+                        title="Reset Cover"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                ) : isUploadingCover ? (
+                  /* Cover Uploading State */
+                  <div className="p-4 bg-white dark:bg-gray-900 rounded-xl border border-brand-500/40 flex items-center gap-3">
+                    <Loader2 className="w-5 h-5 text-brand-600 animate-spin flex-shrink-0" />
+                    <div>
+                      <p className="font-bold text-xs text-gray-900 dark:text-white">Uploading Cover Image...</p>
+                      <p className="text-[11px] text-gray-400 font-mono">
+                        {coverFileDetails ? `${coverFileDetails.name} (${formatBytes(coverFileDetails.size)})` : 'Please wait'}
+                      </p>
+                    </div>
+                  </div>
+                ) : showManualCoverInput ? (
+                  /* Manual Cover URL Input */
+                  <div>
+                    <input
+                      type="text"
+                      placeholder="https://example.com/cover.jpg or /images/..."
+                      value={coverImg}
+                      onChange={(e) => setCoverImg(e.target.value)}
+                      className="w-full px-4 py-2.5 rounded-xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white font-mono text-xs"
+                    />
+                  </div>
+                ) : (
+                  /* File Upload Dropzone */
+                  <div
+                    onClick={() => coverFileInputRef.current?.click()}
+                    className="border-2 border-dashed border-gray-300 dark:border-gray-700 hover:border-brand-500 rounded-xl p-4 text-center bg-white dark:bg-gray-900 cursor-pointer transition-colors space-y-1.5 group"
+                  >
+                    <UploadCloud className="w-7 h-7 text-gray-400 group-hover:text-brand-500 mx-auto transition-colors" />
+                    <div>
+                      <p className="font-bold text-xs text-gray-800 dark:text-gray-200">
+                        Click to upload Custom Banner / Cover Image
+                      </p>
+                      <p className="text-[11px] text-gray-400">
+                        JPG, PNG, WebP images, maximum file size 10MB
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                <input
+                  ref={coverFileInputRef}
+                  type="file"
+                  accept=".jpg,.jpeg,.png,.webp,image/*"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) handleFileUpload(file, 'image');
+                  }}
+                />
+
+                {coverError && (
+                  <p className="text-xs text-rose-500 font-semibold flex items-center gap-1">
+                    <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" /> {coverError}
+                  </p>
+                )}
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block font-bold text-gray-700 dark:text-gray-300 mb-1">Duration (seconds)</label>
                   <input
@@ -440,9 +794,7 @@ export default function AdminPage() {
                     className="w-full px-4 py-2.5 rounded-xl bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white font-mono"
                   />
                 </div>
-              </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block font-bold text-gray-700 dark:text-gray-300 mb-1">Language</label>
                   <select
@@ -455,16 +807,16 @@ export default function AdminPage() {
                     <option value="bilingual">Bilingual (Hinglish)</option>
                   </select>
                 </div>
+              </div>
 
-                <div>
-                  <label className="block font-bold text-gray-700 dark:text-gray-300 mb-1">Tags (Comma Separated)</label>
-                  <input
-                    type="text"
-                    value={tagsInput}
-                    onChange={(e) => setTagsInput(e.target.value)}
-                    className="w-full px-4 py-2.5 rounded-xl bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white"
-                  />
-                </div>
+              <div>
+                <label className="block font-bold text-gray-700 dark:text-gray-300 mb-1">Tags (Comma Separated)</label>
+                <input
+                  type="text"
+                  value={tagsInput}
+                  onChange={(e) => setTagsInput(e.target.value)}
+                  className="w-full px-4 py-2.5 rounded-xl bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white"
+                />
               </div>
 
               <div>
@@ -499,8 +851,10 @@ export default function AdminPage() {
                 </button>
                 <button
                   type="submit"
-                  className="px-6 py-2.5 rounded-xl bg-brand-600 hover:bg-brand-700 text-white font-bold shadow-md"
+                  disabled={isUploadingAudio || isUploadingCover}
+                  className="px-6 py-2.5 rounded-xl bg-brand-600 hover:bg-brand-700 disabled:bg-gray-400 text-white font-bold shadow-md transition-all flex items-center gap-2"
                 >
+                  {(isUploadingAudio || isUploadingCover) && <Loader2 className="w-4 h-4 animate-spin" />}
                   Save Episode
                 </button>
               </div>
