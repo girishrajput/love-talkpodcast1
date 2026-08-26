@@ -89,7 +89,23 @@ CREATE TABLE IF NOT EXISTS `payments` (
   INDEX `idx_payments_order` (`razorpay_order_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- 5. Webhook Events Table
+-- 5. Membership Orders Table
+CREATE TABLE IF NOT EXISTS `membership_orders` (
+  `id` VARCHAR(36) PRIMARY KEY,
+  `user_id` VARCHAR(36) NOT NULL,
+  `plan_id` VARCHAR(36) NOT NULL,
+  `razorpay_order_id` VARCHAR(255) UNIQUE NOT NULL,
+  `amount` DECIMAL(10, 2) NOT NULL,
+  `currency` VARCHAR(10) DEFAULT 'INR',
+  `status` ENUM('created', 'pending', 'paid', 'failed', 'cancelled') NOT NULL DEFAULT 'created',
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  FOREIGN KEY (`user_id`) REFERENCES `profiles`(`id`) ON DELETE CASCADE,
+  INDEX `idx_membership_orders_user` (`user_id`),
+  INDEX `idx_membership_orders_rzp` (`razorpay_order_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- 6. Webhook Events Table
 CREATE TABLE IF NOT EXISTS `webhook_events` (
   `id` VARCHAR(36) PRIMARY KEY,
   `event_id` VARCHAR(255) UNIQUE NOT NULL,

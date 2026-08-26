@@ -1,11 +1,12 @@
 'use client';
 
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { UserProfile, UserMembership } from '@/lib/types';
+import { UserProfile, UserMembership, PaymentRecord } from '@/lib/types';
 
 interface AuthContextType {
   user: UserProfile | null;
   membership: UserMembership | null;
+  payments: PaymentRecord[];
   isPremium: boolean;
   isLoading: boolean;
   loginWithGoogle: (email?: string, name?: string, avatar_url?: string, google_id?: string) => Promise<UserProfile>;
@@ -19,6 +20,7 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<UserProfile | null>(null);
   const [membership, setMembership] = useState<UserMembership | null>(null);
+  const [payments, setPayments] = useState<PaymentRecord[]>([]);
   const [isPremium, setIsPremium] = useState<boolean>(false);
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
@@ -50,6 +52,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           setUser(json.user);
           setMembership(json.membership);
           setIsPremium(json.isPremium);
+          if (json.payments) {
+            setPayments(json.payments);
+          }
           if (typeof window !== 'undefined') {
             localStorage.setItem('lovetalk_auth_user', JSON.stringify(json.user));
           }
@@ -144,6 +149,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       value={{
         user,
         membership,
+        payments,
         isPremium,
         isLoading,
         loginWithGoogle,

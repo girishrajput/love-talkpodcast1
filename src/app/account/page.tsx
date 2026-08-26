@@ -23,7 +23,7 @@ import { getStoredPayments } from '@/lib/data';
 
 export default function AccountPage() {
   const router = useRouter();
-  const { user, membership, isPremium, logout, updateProfile } = useAuth();
+  const { user, membership, payments, isPremium, logout, updateProfile } = useAuth();
 
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [nameInput, setNameInput] = useState('');
@@ -43,8 +43,6 @@ export default function AccountPage() {
       </div>
     );
   }
-
-  const payments = getStoredPayments().filter(p => p.user_id === user.id);
 
   const handleSaveProfile = (e: React.FormEvent) => {
     e.preventDefault();

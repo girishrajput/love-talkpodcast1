@@ -3,13 +3,23 @@
 import React, { Suspense } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
-import { CheckCircle2, Heart, Crown, ArrowRight } from 'lucide-react';
+import { CheckCircle2, Heart, Crown, ArrowRight, Calendar, ShieldCheck } from 'lucide-react';
+import { useAuth } from '@/context/AuthContext';
 
 function PaymentSuccessContent() {
   const searchParams = useSearchParams();
-  const planName = searchParams.get('plan') || 'Love Talk Premium';
+  const { membership } = useAuth();
+  const planName = searchParams.get('plan') || membership?.plan_name || 'Love Talk Premium';
   const amount = searchParams.get('amount') || '99';
   const payId = searchParams.get('payId') || `pay_${Date.now()}`;
+
+  const startDateStr = membership?.start_date
+    ? new Date(membership.start_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+    : new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+
+  const endDateStr = membership?.end_date
+    ? new Date(membership.end_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+    : new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 
   return (
     <div className="space-y-8">
@@ -36,7 +46,7 @@ function PaymentSuccessContent() {
           <Crown className="w-4 h-4 text-amber-500" /> Subscription Receipt
         </h3>
 
-        <div className="grid grid-cols-2 gap-3 text-gray-600 dark:text-gray-300">
+        <div className="grid grid-cols-2 gap-4 text-gray-600 dark:text-gray-300">
           <div>
             <span className="text-gray-400 text-[11px] block">Plan</span>
             <span className="font-bold text-gray-900 dark:text-white">{planName}</span>
@@ -47,11 +57,21 @@ function PaymentSuccessContent() {
           </div>
           <div>
             <span className="text-gray-400 text-[11px] block">Payment ID</span>
-            <span className="font-mono text-gray-800 dark:text-gray-200">{payId}</span>
+            <span className="font-mono text-gray-800 dark:text-gray-200 truncate block">{payId}</span>
           </div>
           <div>
-            <span className="text-gray-400 text-[11px] block">Duration</span>
-            <span className="font-semibold text-emerald-600">1 Year Active</span>
+            <span className="text-gray-400 text-[11px] block">Status</span>
+            <span className="font-semibold text-emerald-600 flex items-center gap-1">
+              <ShieldCheck className="w-3.5 h-3.5" /> Active & Verified
+            </span>
+          </div>
+          <div>
+            <span className="text-gray-400 text-[11px] block">Start Date</span>
+            <span className="font-semibold text-gray-800 dark:text-gray-200">{startDateStr}</span>
+          </div>
+          <div>
+            <span className="text-gray-400 text-[11px] block">Expiry Date</span>
+            <span className="font-semibold text-gray-800 dark:text-gray-200">{endDateStr}</span>
           </div>
         </div>
       </div>

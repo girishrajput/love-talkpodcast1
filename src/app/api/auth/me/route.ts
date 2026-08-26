@@ -70,11 +70,31 @@ export async function GET(request: NextRequest) {
 
     const isPremium = user.role === 'super_admin' || Boolean(membership);
 
+    // Fetch Payments from MySQL
+    const paymentRows = await query<any[]>(
+      `SELECT * FROM payments WHERE user_id = ? ORDER BY paid_at DESC LIMIT 20`,
+      [user.id]
+    );
+
+    const payments = paymentRows.map(p => ({
+      id: p.id,
+      user_id: p.user_id,
+      membership_id: p.membership_id,
+      razorpay_payment_id: p.razorpay_payment_id,
+      razorpay_order_id: p.razorpay_order_id,
+      amount: parseFloat(p.amount),
+      currency: p.currency || 'INR',
+      status: p.status,
+      payment_method: p.payment_method || 'Razorpay UPI/Card',
+      paid_at: new Date(p.paid_at).toISOString()
+    }));
+
     return NextResponse.json({
       success: true,
       user,
       membership,
-      isPremium
+      isPremium,
+      payments
     });
   } catch (error: any) {
     console.error('Error fetching auth session:', error);
