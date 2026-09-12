@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { query } from '@/lib/db';
-import { RAZORPAY_KEY_ID, createRazorpayOrder } from '@/lib/razorpay';
+import { RAZORPAY_KEY_ID, isRazorpayConfigured, createRazorpayOrder } from '@/lib/razorpay';
 
 export const dynamic = 'force-dynamic';
 
@@ -62,6 +62,7 @@ export async function POST(request: NextRequest) {
       amount: amountInPaisa,
       currency: targetPlan.currency || 'INR',
       keyId: RAZORPAY_KEY_ID,
+      isConfigured: isRazorpayConfigured(),
       planName: targetPlan.name,
       planPrice: officialPrice
     });

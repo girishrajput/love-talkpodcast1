@@ -1,30 +1,32 @@
-import mysql from 'mysql2/promise';
+/**
+ * Standalone Database Migration Script
+ * Runs all DDL table initialization against the configured MySQL database.
+ * Usage: node scripts/migrate.js
+ */
 
-// Create a connection pool to MySQL
-const pool = mysql.createPool({
-  host: process.env.DB_HOST || 'localhost',
-  port: parseInt(process.env.DB_PORT || '3306', 10),
-  user: process.env.DB_USER || 'root',
-  password: process.env.DB_PASSWORD || '',
-  database: process.env.DB_NAME || 'lovetalkpodcast',
-  waitForConnections: true,
-  connectionLimit: parseInt(process.env.DB_CONNECTION_LIMIT || '10', 10),
-  maxIdle: parseInt(process.env.DB_MAX_IDLE || '10', 10),
-  idleTimeout: parseInt(process.env.DB_IDLE_TIMEOUT || '60000', 10),
-  queueLimit: 0,
-  enableKeepAlive: true,
-  keepAliveInitialDelay: 0,
-  ssl: process.env.DB_SSL === 'true' ? { rejectUnauthorized: false } : undefined,
-});
+const mysql = require('mysql2/promise');
 
-let tablesInitialized = false;
+async function runMigrations() {
+  console.log('🚀 Starting Love Talk Podcast database migrations...');
 
-export async function ensureTablesExist() {
-  if (tablesInitialized) return;
+  const pool = mysql.createPool({
+    host: process.env.DB_HOST || 'localhost',
+    port: parseInt(process.env.DB_PORT || '3306', 10),
+    user: process.env.DB_USER || 'root',
+    password: process.env.DB_PASSWORD || '',
+    database: process.env.DB_NAME || 'lovetalkpodcast',
+    waitForConnections: true,
+    connectionLimit: 5,
+    ssl: process.env.DB_SSL === 'true' ? { rejectUnauthorized: false } : undefined,
+  });
+
   try {
-    tablesInitialized = true;
+    const connection = await pool.getConnection();
+    console.log('✅ Connected to MySQL database successfully.');
+    connection.release();
 
     // 1. Profiles Table
+    console.log('📦 Migrating table: profiles...');
     await pool.query(`
       CREATE TABLE IF NOT EXISTS \`profiles\` (
         \`id\` VARCHAR(36) PRIMARY KEY,
@@ -43,6 +45,7 @@ export async function ensureTablesExist() {
     `);
 
     // 2. Membership Plans Table
+    console.log('📦 Migrating table: membership_plans...');
     await pool.query(`
       CREATE TABLE IF NOT EXISTS \`membership_plans\` (
         \`id\` VARCHAR(36) PRIMARY KEY,
@@ -66,6 +69,7 @@ export async function ensureTablesExist() {
     `);
 
     // 3. Memberships Table
+    console.log('📦 Migrating table: memberships...');
     await pool.query(`
       CREATE TABLE IF NOT EXISTS \`memberships\` (
         \`id\` VARCHAR(36) PRIMARY KEY,
@@ -85,6 +89,7 @@ export async function ensureTablesExist() {
     `);
 
     // 4. Payments Table
+    console.log('📦 Migrating table: payments...');
     await pool.query(`
       CREATE TABLE IF NOT EXISTS \`payments\` (
         \`id\` VARCHAR(36) PRIMARY KEY,
@@ -104,6 +109,7 @@ export async function ensureTablesExist() {
     `);
 
     // 5. Membership Orders Table
+    console.log('📦 Migrating table: membership_orders...');
     await pool.query(`
       CREATE TABLE IF NOT EXISTS \`membership_orders\` (
         \`id\` VARCHAR(36) PRIMARY KEY,
@@ -121,6 +127,7 @@ export async function ensureTablesExist() {
     `);
 
     // 6. Webhook Events Table
+    console.log('📦 Migrating table: webhook_events...');
     await pool.query(`
       CREATE TABLE IF NOT EXISTS \`webhook_events\` (
         \`id\` VARCHAR(36) PRIMARY KEY,
@@ -134,6 +141,7 @@ export async function ensureTablesExist() {
     `);
 
     // 7. Episodes Table
+    console.log('📦 Migrating table: episodes...');
     await pool.query(`
       CREATE TABLE IF NOT EXISTS \`episodes\` (
         \`id\` VARCHAR(36) PRIMARY KEY,
@@ -160,27 +168,15 @@ export async function ensureTablesExist() {
         INDEX \`idx_episodes_published\` (\`is_published\`)
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
     `);
-  } catch (err) {
-    console.warn('Auto table initialization warning:', err);
+
+    console.log('🎉 All database migrations completed successfully!');
+    await pool.end();
+    process.exit(0);
+  } catch (error) {
+    console.error('❌ Migration failed:', error);
+    await pool.end();
+    process.exit(1);
   }
 }
 
-/**
- * Execute a MySQL query with parameters
- */
-export async function query<T = any>(sql: string, params: any[] = []): Promise<T> {
-  try {
-    const isProd = process.env.NODE_ENV === 'production';
-    const enableAutoMigrate = process.env.ENABLE_AUTO_MIGRATION === 'true';
-    if (!isProd || enableAutoMigrate) {
-      await ensureTablesExist();
-    }
-    const [rows] = await pool.execute(sql, params);
-    return rows as T;
-  } catch (error: any) {
-    console.error('MySQL Query Error:', error);
-    throw new Error(error.message || 'Database query execution failed');
-  }
-}
-
-export default pool;
+runMigrations();

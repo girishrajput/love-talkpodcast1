@@ -111,9 +111,9 @@ export const Footer: React.FC = () => {
         <div className="pt-8 border-t border-gray-800 flex flex-col md:flex-row items-center justify-between text-xs text-gray-500 gap-4">
           <p>© {new Date().getFullYear()} Love Talk Podcast by Tim & Chels. All rights reserved.</p>
           <div className="flex gap-6">
-            <span>Privacy Policy</span>
-            <span>Terms of Service</span>
-            <span>Sitemap</span>
+            <Link href="/privacy-policy" className="hover:text-brand-400 transition-colors">Privacy Policy</Link>
+            <Link href="/terms-of-service" className="hover:text-brand-400 transition-colors">Terms of Service</Link>
+            <Link href="/sitemap" className="hover:text-brand-400 transition-colors">Sitemap</Link>
           </div>
         </div>
       </div>

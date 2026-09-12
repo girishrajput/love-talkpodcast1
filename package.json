@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "db:seed": "node scripts/seed-db.js"
+    "db:seed": "node scripts/seed-db.js",
+    "db:migrate": "node scripts/migrate.js"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.0",

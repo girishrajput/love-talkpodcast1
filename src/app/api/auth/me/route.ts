@@ -7,11 +7,28 @@ export const dynamic = 'force-dynamic';
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
-    const userId = searchParams.get('userId');
-    const email = searchParams.get('email');
+    let userId = searchParams.get('userId');
+    let email = searchParams.get('email');
+
+    // Check httpOnly session cookie if query parameters are missing
+    if (!userId && !email) {
+      const sessionCookie = request.cookies.get('lovetalk_user_session')?.value;
+      if (sessionCookie) {
+        try {
+          const sessionData = JSON.parse(sessionCookie);
+          userId = sessionData.id || null;
+          email = sessionData.email || null;
+        } catch (err) {
+          // Ignore invalid session cookie payload
+        }
+      }
+    }
 
     if (!userId && !email) {
-      return NextResponse.json({ success: false, error: 'User ID or Email parameter is required' }, { status: 400 });
+      return NextResponse.json(
+        { success: false, error: 'Unauthorized: Valid session or query parameter required' },
+        { status: 401 }
+      );
     }
 
     let sql = `SELECT * FROM profiles WHERE `;

@@ -9,8 +9,9 @@ import { GoogleAuthModal } from '@/components/GoogleAuthModal';
 
 export default function LoginPage() {
   const router = useRouter();
-  const { user, isLoading } = useAuth();
+  const { user, isLoading, loginWithGoogle } = useAuth();
   const [googleModalOpen, setGoogleModalOpen] = useState(false);
+  const [authError, setAuthError] = useState<string | null>(null);
 
   // If user is already logged in, redirect to account or super-admin
   React.useEffect(() => {
@@ -22,6 +23,54 @@ export default function LoginPage() {
       }
     }
   }, [user, router]);
+
+  // Listen for Google OAuth Hash or Query redirect responses (#id_token=... or ?error=...)
+  React.useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const urlParams = new URLSearchParams(window.location.search);
+    const errParam = urlParams.get('error');
+    if (errParam) {
+      setAuthError(decodeURIComponent(errParam));
+      return;
+    }
+
+    const hash = window.location.hash;
+    if (hash && hash.includes('id_token=')) {
+      try {
+        const params = new URLSearchParams(hash.replace(/^#/, ''));
+        const idToken = params.get('id_token');
+        if (idToken) {
+          const base64Url = idToken.split('.')[1];
+          const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+          const jsonPayload = decodeURIComponent(
+            atob(base64)
+              .split('')
+              .map((c) => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2))
+              .join('')
+          );
+          const payload = JSON.parse(jsonPayload);
+
+          if (payload.email) {
+            const email = payload.email;
+            const name = payload.name || email.split('@')[0];
+            const picture = payload.picture || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(email)}`;
+            const googleId = payload.sub ? `google_${payload.sub}` : `google_${Date.now()}`;
+
+            loginWithGoogle(email, name, picture, googleId).then(() => {
+              window.history.replaceState({}, document.title, window.location.pathname);
+            }).catch((err: any) => {
+              console.error('Google OAuth Hash sync failed:', err);
+              setAuthError(err.message || 'Failed to sync Google user session');
+            });
+          }
+        }
+      } catch (err: any) {
+        console.error('Failed to parse Google OAuth redirect token:', err);
+        setAuthError('Invalid Google OAuth token response');
+      }
+    }
+  }, [loginWithGoogle]);
 
   const handleAuthSuccess = () => {
     setGoogleModalOpen(false);
@@ -44,6 +93,12 @@ export default function LoginPage() {
       {/* Main Login Card */}
       <div className="bg-white dark:bg-gray-900 p-8 rounded-3xl border border-gray-200/80 dark:border-gray-800/80 shadow-xl space-y-6">
         
+        {authError && (
+          <div className="p-3 bg-rose-500/10 border border-rose-500/20 text-rose-600 dark:text-rose-400 rounded-xl text-xs font-semibold">
+            {authError}
+          </div>
+        )}
+
         {/* Google OAuth Button */}
         <button
           onClick={() => setGoogleModalOpen(true)}

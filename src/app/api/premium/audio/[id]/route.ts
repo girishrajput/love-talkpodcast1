@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getStoredEpisodes } from '@/lib/data';
 import { hasPremiumAccess } from '@/lib/membership';
+import { getMediaUrl } from '@/lib/storage';
 
 export async function GET(
   request: Request,
@@ -16,11 +17,13 @@ export async function GET(
     return NextResponse.json({ error: 'Episode not found' }, { status: 404 });
   }
 
+  const mediaUrl = getMediaUrl(episode.audio_url);
+
   // If FREE episode, allow unrestricted access
   if (episode.access_type === 'FREE') {
     return NextResponse.json({
       accessGranted: true,
-      audioUrl: episode.audio_url,
+      audioUrl: mediaUrl,
       previewOnly: false,
       duration: episode.audio_duration
     });
@@ -32,7 +35,7 @@ export async function GET(
   if (isPremiumUser) {
     return NextResponse.json({
       accessGranted: true,
-      audioUrl: episode.audio_url,
+      audioUrl: mediaUrl,
       previewOnly: false,
       duration: episode.audio_duration
     });
@@ -44,7 +47,7 @@ export async function GET(
   return NextResponse.json(
     {
       accessGranted: false,
-      audioUrl: episode.audio_url,
+      audioUrl: mediaUrl,
       previewOnly: true,
       previewDuration: previewLimit,
       message: 'Unlock Love Talk Premium to listen to the full episode.'

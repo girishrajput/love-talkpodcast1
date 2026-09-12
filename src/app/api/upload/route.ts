@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { mkdir, writeFile } from 'fs/promises';
 import path from 'path';
+import { uploadMediaFile } from '@/lib/storage';
 
 export const dynamic = 'force-dynamic';
 
@@ -89,29 +89,28 @@ export async function POST(request: NextRequest) {
     const uniqueSuffix = `${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
     const newFilename = `${isAudio ? 'audio' : 'cover'}_${sanitizedBase}_${uniqueSuffix}${ext}`;
 
-    // Target upload directory
+    // Determine category and subfolder
     const subfolder = isAudio ? 'audio' : 'covers';
-    const uploadDir = path.join(process.cwd(), 'public', 'uploads', subfolder);
-
-    // Create target directory if it does not exist
-    await mkdir(uploadDir, { recursive: true });
-
-    // Write file to disk
-    const filePath = path.join(uploadDir, newFilename);
     const arrayBuffer = await file.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
-    await writeFile(filePath, buffer);
 
-    const publicUrl = `/uploads/${subfolder}/${newFilename}`;
+    // Save via Storage Abstraction (Cloud S3/R2 or Local Fallback)
+    const uploadResult = await uploadMediaFile({
+      buffer,
+      filename: newFilename,
+      mimeType: isAudio ? 'audio/mpeg' : mimeType || 'image/jpeg',
+      subfolder
+    });
 
     return NextResponse.json({
       success: true,
-      url: publicUrl,
+      url: uploadResult.url,
       filename: newFilename,
       originalName: filename,
       size,
       mimeType: isAudio ? 'audio/mpeg' : mimeType || 'image/jpeg',
-      category: isAudio ? 'audio' : 'image'
+      category: isAudio ? 'audio' : 'image',
+      provider: uploadResult.provider
     });
   } catch (error: any) {
     console.error('File Upload Error:', error);

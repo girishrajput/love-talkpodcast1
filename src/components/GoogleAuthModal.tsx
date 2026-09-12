@@ -107,11 +107,11 @@ export const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({ isOpen, onClos
 
   const triggerGoogleRedirectFlow = () => {
     if (!googleClientId) return;
-    const redirectUri = `${window.location.origin}/login`;
+    const redirectUri = `${window.location.origin}/api/auth/callback/google`;
     const scope = encodeURIComponent('openid email profile');
     const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${googleClientId}&redirect_uri=${encodeURIComponent(
       redirectUri
-    )}&response_type=token%20id_token&scope=${scope}&nonce=${Date.now()}`;
+    )}&response_type=code&scope=${scope}&access_type=offline&prompt=consent`;
     window.location.href = authUrl;
   };
 

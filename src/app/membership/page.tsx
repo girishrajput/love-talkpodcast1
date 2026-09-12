@@ -12,7 +12,8 @@ import {
   ArrowRight,
   Lock,
   Check,
-  Loader2
+  Loader2,
+  ExternalLink
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { INITIAL_PLANS, INITIAL_BENEFITS } from '@/lib/data';
@@ -62,47 +63,54 @@ export default function MembershipPage() {
     }
 
     setProcessingPlanId(plan.id);
-    setStatusMessage('Creating payment order...');
+    setStatusMessage('Creating subscription order...');
 
     try {
-      // 2. Call server-side API to create Razorpay Order
-      const res = await fetch('/api/membership/create-order', {
+      // 2. Call server-side API to create Razorpay Subscription
+      const res = await fetch('/api/razorpay/subscription/create', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ planId: plan.id, userId: user.id })
+        body: JSON.stringify({ plan_id: plan.id, userId: user.id })
       });
 
       const orderData = await res.json();
 
       if (!res.ok || !orderData.success) {
-        throw new Error(orderData.error || 'Failed to create payment order');
+        throw new Error(orderData.error || 'Failed to create subscription order');
       }
+
+      const subscriptionId = orderData.subscription_id || orderData.subscriptionId || orderData.orderId;
 
       // 3. Load Razorpay SDK
       setStatusMessage('Opening Razorpay Checkout...');
       const isSdkLoaded = await loadRazorpayScript();
 
-      // Check if real key or test mode
-      const isRealRazorpay = isSdkLoaded && (window as any).Razorpay && !orderData.keyId.includes('rzp_test_lovetalk');
+      // Check if real configured key or test mode
+      const isRealRazorpay = Boolean(
+        isSdkLoaded &&
+        (window as any).Razorpay &&
+        orderData.isConfigured &&
+        orderData.keyId &&
+        !orderData.keyId.includes('YOUR_') &&
+        !orderData.keyId.includes('rzp_test_lovetalk')
+      );
 
       if (isRealRazorpay) {
-        const options = {
-          key: orderData.keyId,
-          amount: orderData.amount,
-          currency: orderData.currency || 'INR',
+        const options: any = {
+          key: orderData.keyId || orderData.key,
+          subscription_id: subscriptionId,
           name: 'Love Talk Podcast',
-          description: `${plan.name} Membership Plan`,
+          description: `${plan.name} Subscription Plan`,
           image: '/images/tim_chels.jpg',
-          order_id: orderData.orderId,
           handler: async function (response: any) {
-            setStatusMessage('Verifying payment signature...');
+            setStatusMessage('Verifying subscription payment signature...');
             try {
-              const verifyRes = await fetch('/api/membership/verify-payment', {
+              const verifyRes = await fetch('/api/razorpay/subscription/verify', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                  razorpay_order_id: response.razorpay_order_id,
                   razorpay_payment_id: response.razorpay_payment_id,
+                  razorpay_subscription_id: response.razorpay_subscription_id || subscriptionId,
                   razorpay_signature: response.razorpay_signature,
                   userId: user.id,
                   planId: plan.id
@@ -115,7 +123,7 @@ export default function MembershipPage() {
                 await refreshSession();
                 router.push(`/payment/success?plan=${encodeURIComponent(plan.name)}&amount=${orderData.planPrice}&payId=${response.razorpay_payment_id}`);
               } else {
-                router.push(`/payment/failed?reason=${encodeURIComponent(verifyData.error || 'Payment signature verification failed')}`);
+                router.push(`/payment/failed?reason=${encodeURIComponent(verifyData.error || 'Subscription signature verification failed')}`);
               }
             } catch (vErr: any) {
               router.push(`/payment/failed?reason=${encodeURIComponent(vErr.message || 'Verification failed')}`);
@@ -138,22 +146,22 @@ export default function MembershipPage() {
 
         const rzp = new (window as any).Razorpay(options);
         rzp.on('payment.failed', function (resp: any) {
-          console.error('Razorpay payment failed:', resp.error);
-          router.push(`/payment/failed?reason=${encodeURIComponent(resp.error?.description || 'Payment failed')}`);
+          console.error('Razorpay subscription payment failed:', resp.error);
+          router.push(`/payment/failed?reason=${encodeURIComponent(resp.error?.description || 'Subscription payment failed')}`);
         });
         rzp.open();
       } else {
         // Dev / Test Mode Checkout Flow
-        setStatusMessage('Processing test payment verification...');
+        setStatusMessage('Processing test subscription verification...');
         const mockPaymentId = `pay_test_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
         const mockSignature = `mock_sig_${Date.now()}`;
 
-        const verifyRes = await fetch('/api/membership/verify-payment', {
+        const verifyRes = await fetch('/api/razorpay/subscription/verify', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            razorpay_order_id: orderData.orderId,
             razorpay_payment_id: mockPaymentId,
+            razorpay_subscription_id: subscriptionId,
             razorpay_signature: mockSignature,
             userId: user.id,
             planId: plan.id
@@ -170,8 +178,8 @@ export default function MembershipPage() {
         }
       }
     } catch (err: any) {
-      console.error('Payment checkout error:', err);
-      router.push(`/payment/failed?reason=${encodeURIComponent(err.message || 'Payment initiation failed')}`);
+      console.error('Subscription checkout error:', err);
+      router.push(`/payment/failed?reason=${encodeURIComponent(err.message || 'Subscription initiation failed')}`);
     } finally {
       setProcessingPlanId(null);
       setStatusMessage('');
@@ -252,31 +260,44 @@ export default function MembershipPage() {
                 </ul>
               </div>
 
-              <div className="pt-8">
+              <div className="pt-8 space-y-3">
                 {isCurrentActivePlan ? (
                   <div className="w-full py-4 rounded-2xl bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 font-extrabold text-sm text-center flex items-center justify-center gap-2 border border-emerald-500/40">
                     <Check className="w-5 h-5" /> Active Subscription
                   </div>
                 ) : (
-                  <button
-                    onClick={() => handleJoinPlan(plan)}
-                    disabled={isProcessing}
-                    className={`w-full py-4 rounded-2xl font-extrabold text-sm text-white shadow-xl transition-all flex items-center justify-center gap-2 ${
-                      plan.is_featured
-                        ? 'bg-gradient-to-r from-brand-600 to-rose-500 hover:from-brand-500 hover:to-rose-400 shadow-brand-600/30'
-                        : 'bg-gray-900 dark:bg-white text-gray-900 dark:text-gray-900 hover:bg-gray-800'
-                    }`}
-                  >
-                    {isProcessing ? (
-                      <>
-                        <Loader2 className="w-4 h-4 animate-spin" /> {statusMessage || 'Processing...'}
-                      </>
-                    ) : (
-                      <>
-                        Upgrade Now <ArrowRight className="w-4 h-4" />
-                      </>
-                    )}
-                  </button>
+                  <>
+                    <button
+                      onClick={() => handleJoinPlan(plan)}
+                      disabled={isProcessing}
+                      className={`w-full py-3.5 rounded-2xl font-extrabold text-sm text-white shadow-xl transition-all flex items-center justify-center gap-2 ${
+                        plan.is_featured
+                          ? 'bg-gradient-to-r from-brand-600 to-rose-500 hover:from-brand-500 hover:to-rose-400 shadow-brand-600/30'
+                          : 'bg-gray-900 dark:bg-white text-gray-900 dark:text-gray-900 hover:bg-gray-800'
+                      }`}
+                    >
+                      {isProcessing ? (
+                        <>
+                          <Loader2 className="w-4 h-4 animate-spin" /> {statusMessage || 'Processing...'}
+                        </>
+                      ) : (
+                        <>
+                          Subscribe Now (Pop-up) <ArrowRight className="w-4 h-4" />
+                        </>
+                      )}
+                    </button>
+
+                    {/* Hosted Checkout Link Fallback */}
+                    <a
+                      href={plan.slug === 'youth' || plan.id === 'plan-youth' ? 'https://rzp.io/rzp/ukfX7s2G' : 'https://rzp.io/rzp/6V5lCkn'}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="w-full py-2.5 rounded-xl border border-gray-200 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-600 dark:text-gray-400 font-semibold text-xs transition-all flex items-center justify-center gap-1.5"
+                    >
+                      <span>Pay via Hosted Page</span>
+                      <ExternalLink className="w-3.5 h-3.5 text-gray-400" />
+                    </a>
+                  </>
                 )}
               </div>
             </div>
