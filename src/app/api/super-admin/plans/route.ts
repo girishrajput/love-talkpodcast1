@@ -23,7 +23,7 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { name, slug, target_audience, price, discounted_price, is_active, is_featured, badge, benefits } = body;
+    const { name, slug, target_audience, price, discounted_price, billing_period, is_active, is_featured, badge, benefits, razorpay_plan_id } = body;
 
     if (!name || !slug || !price) {
       return NextResponse.json({ error: 'Name, slug, and price are required' }, { status: 400 });
@@ -31,8 +31,8 @@ export async function POST(request: NextRequest) {
 
     const planId = `plan_${Date.now()}`;
     await query(
-      `INSERT INTO membership_plans (id, name, slug, target_audience, price, discounted_price, is_active, is_featured, badge, benefits)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO membership_plans (id, name, slug, target_audience, price, discounted_price, billing_period, is_active, is_featured, badge, benefits, razorpay_plan_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         planId,
         name,
@@ -40,10 +40,12 @@ export async function POST(request: NextRequest) {
         target_audience || 'All Listeners',
         price,
         discounted_price || null,
+        billing_period || 'year',
         is_active ?? true,
         is_featured ?? false,
         badge || null,
-        JSON.stringify(benefits || [])
+        JSON.stringify(benefits || []),
+        razorpay_plan_id || null
       ]
     );
 
@@ -57,7 +59,7 @@ export async function POST(request: NextRequest) {
 export async function PUT(request: NextRequest) {
   try {
     const body = await request.json();
-    const { id, name, slug, target_audience, price, discounted_price, is_active, is_featured, badge, benefits } = body;
+    const { id, name, slug, target_audience, price, discounted_price, billing_period, is_active, is_featured, badge, benefits, razorpay_plan_id } = body;
 
     if (!id) {
       return NextResponse.json({ error: 'Plan ID is required' }, { status: 400 });
@@ -70,10 +72,12 @@ export async function PUT(request: NextRequest) {
        target_audience = COALESCE(?, target_audience),
        price = COALESCE(?, price),
        discounted_price = COALESCE(?, discounted_price),
+       billing_period = COALESCE(?, billing_period),
        is_active = COALESCE(?, is_active),
        is_featured = COALESCE(?, is_featured),
        badge = COALESCE(?, badge),
        benefits = COALESCE(?, benefits),
+       razorpay_plan_id = COALESCE(?, razorpay_plan_id),
        updated_at = NOW()
        WHERE id = ?`,
       [
@@ -82,10 +86,12 @@ export async function PUT(request: NextRequest) {
         target_audience || null,
         price || null,
         discounted_price || null,
+        billing_period || null,
         is_active ?? null,
         is_featured ?? null,
         badge || null,
         benefits ? JSON.stringify(benefits) : null,
+        razorpay_plan_id || null,
         id
       ]
     );

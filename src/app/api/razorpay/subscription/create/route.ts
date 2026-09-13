@@ -1,11 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { query } from '@/lib/db';
-import { 
-  RAZORPAY_KEY_ID, 
-  RAZORPAY_PLAN_ID_1, 
-  RAZORPAY_PLAN_ID_2, 
-  isRazorpayConfigured, 
-  createRazorpaySubscription 
+import {
+  RAZORPAY_KEY_ID,
+  RAZORPAY_PLAN_ID_1,
+  RAZORPAY_PLAN_ID_2,
+  isRazorpayConfigured,
+  isPlaceholderRazorpayPlanId,
+  createRazorpaySubscription,
+  RazorpayNotConfiguredError
 } from '@/lib/razorpay';
 
 export const dynamic = 'force-dynamic';
@@ -30,42 +32,44 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'User profile not found' }, { status: 404 });
     }
 
-    // 2. Resolve Plan ID (Tier 1 vs Tier 2)
-    const tier1Id = process.env.NEXT_PUBLIC_RAZORPAY_PLAN_TIER_1 || RAZORPAY_PLAN_ID_1 || 'plan_TUDEcZ2uLPWkYl';
-    const tier2Id = process.env.NEXT_PUBLIC_RAZORPAY_PLAN_TIER_2 || RAZORPAY_PLAN_ID_2 || 'plan_TUDCZ8dhD0OOmu';
-
-    let razorpayPlanId = tier1Id;
-    let dbSearchSlug = 'youth';
-
-    if (
-      planInput === 'tier_2' || 
-      planInput === 'tier2' || 
-      planInput === 'plan_2' || 
-      planInput === 'professional' || 
-      planInput === 'plan-professional' || 
-      planInput === tier2Id
-    ) {
-      razorpayPlanId = tier2Id;
-      dbSearchSlug = 'professional';
-    }
-
-    // Load official plan details directly from MySQL database
+    // 2. Load the official plan directly from MySQL (source of truth for price AND Razorpay Plan ID)
     const plans = await query<any[]>(
-      `SELECT * FROM membership_plans WHERE slug = ? OR id = ? OR razorpay_plan_id = ? LIMIT 1`,
-      [dbSearchSlug, planInput, razorpayPlanId]
+      `SELECT * FROM membership_plans WHERE (id = ? OR slug = ?) AND is_active = TRUE LIMIT 1`,
+      [planInput, planInput]
     );
 
-    const targetPlan = plans.length > 0 ? plans[0] : null;
-    const officialPrice = targetPlan 
-      ? (targetPlan.discounted_price ? parseFloat(targetPlan.discounted_price) : parseFloat(targetPlan.price))
-      : (dbSearchSlug === 'professional' ? 399 : 99);
+    if (plans.length === 0) {
+      return NextResponse.json({ success: false, error: 'Invalid or inactive membership plan' }, { status: 404 });
+    }
 
+    const targetPlan = plans[0];
+    const officialPrice = targetPlan.discounted_price ? parseFloat(targetPlan.discounted_price) : parseFloat(targetPlan.price);
     const amountInPaisa = Math.round(officialPrice * 100);
 
-    // 3. Create Razorpay Subscription via REST API (or mock ID in dev mode)
+    // 3. Resolve the Razorpay Plan ID: the plan's own `razorpay_plan_id` column
+    // (set in Super Admin → Plans) is the source of truth. Legacy env-based
+    // tier IDs are only used as a fallback for plans that predate that field.
+    const tier1Id = process.env.NEXT_PUBLIC_RAZORPAY_PLAN_TIER_1 || RAZORPAY_PLAN_ID_1;
+    const tier2Id = process.env.NEXT_PUBLIC_RAZORPAY_PLAN_TIER_2 || RAZORPAY_PLAN_ID_2;
+
+    const razorpayPlanId: string =
+      targetPlan.razorpay_plan_id ||
+      (targetPlan.slug === 'professional' ? tier2Id : tier1Id);
+
+    if (isPlaceholderRazorpayPlanId(razorpayPlanId)) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: `Razorpay Plan ID for "${targetPlan.name}" is missing or looks like a placeholder ("${razorpayPlanId || 'empty'}"). Set the real live Plan ID for this plan in Super Admin → Plans before accepting subscriptions.`
+        },
+        { status: 400 }
+      );
+    }
+
+    // 4. Create Razorpay Subscription via REST API (or mock ID in dev mode)
     const { subscriptionId } = await createRazorpaySubscription(razorpayPlanId);
 
-    // 4. Store pending subscription order in MySQL membership_orders
+    // 5. Store pending subscription order in MySQL membership_orders
     const internalOrderId = `sub_ord_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
     await query(
       `INSERT INTO membership_orders (id, user_id, plan_id, razorpay_order_id, amount, currency, status)
@@ -74,10 +78,10 @@ export async function POST(request: NextRequest) {
       [
         internalOrderId,
         userId,
-        targetPlan ? targetPlan.id : (dbSearchSlug === 'professional' ? 'plan-professional' : 'plan-youth'),
+        targetPlan.id,
         subscriptionId,
         officialPrice,
-        targetPlan ? targetPlan.currency : 'INR'
+        targetPlan.currency || 'INR'
       ]
     );
 
@@ -87,17 +91,20 @@ export async function POST(request: NextRequest) {
       subscriptionId: subscriptionId,
       orderId: subscriptionId,
       amount: amountInPaisa,
-      currency: targetPlan ? targetPlan.currency : 'INR',
+      currency: targetPlan.currency || 'INR',
       key: RAZORPAY_KEY_ID,
       keyId: RAZORPAY_KEY_ID,
       isConfigured: isRazorpayConfigured(),
       plan_id: razorpayPlanId,
       planId: razorpayPlanId,
-      planName: targetPlan ? targetPlan.name : (dbSearchSlug === 'professional' ? 'Professional' : 'Youth'),
+      planName: targetPlan.name,
       planPrice: officialPrice
     });
   } catch (err: any) {
     console.error('Error creating Razorpay subscription:', err);
-    return NextResponse.json({ success: false, error: err.message || 'Failed to create subscription' }, { status: 500 });
+    if (err instanceof RazorpayNotConfiguredError) {
+      return NextResponse.json({ success: false, error: err.message }, { status: 503 });
+    }
+    return NextResponse.json({ success: false, error: err.message || 'Failed to create subscription' }, { status: 502 });
   }
 }

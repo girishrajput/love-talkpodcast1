@@ -32,14 +32,19 @@ export async function POST(request: Request) {
       return NextResponse.json({ status: 'already_processed', event_id: eventId });
     }
 
-    // Record webhook event in MySQL
-    const webhookDbId = `wh_evt_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
-    await query(
-      `INSERT INTO webhook_events (id, event_id, event_type, payload, processed)
-       VALUES (?, ?, ?, ?, FALSE)
-       ON DUPLICATE KEY UPDATE updated_at = NOW()`,
-      [webhookDbId, eventId, event || 'unknown', JSON.stringify(payload)]
-    );
+    // Record webhook event in MySQL. The `webhook_events` table has no
+    // `updated_at` column, so a redelivered event_id must skip the INSERT
+    // entirely (an `ON DUPLICATE KEY UPDATE updated_at = NOW()` here would
+    // reference a nonexistent column and throw on every retry, breaking
+    // idempotency for the exact case this table exists to handle).
+    if (existingEvents.length === 0) {
+      const webhookDbId = `wh_evt_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+      await query(
+        `INSERT INTO webhook_events (id, event_id, event_type, payload, processed)
+         VALUES (?, ?, ?, ?, FALSE)`,
+        [webhookDbId, eventId, event || 'unknown', JSON.stringify(payload)]
+      );
+    }
 
     console.log(`[Razorpay Webhook Received] Event: ${event}, Event ID: ${eventId}`);
 

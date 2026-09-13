@@ -12,8 +12,7 @@ import {
   ArrowRight,
   Lock,
   Check,
-  Loader2,
-  ExternalLink
+  Loader2
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { INITIAL_PLANS, INITIAL_BENEFITS } from '@/lib/data';
@@ -151,8 +150,10 @@ export default function MembershipPage() {
         });
         rzp.open();
       } else {
-        // Dev / Test Mode Checkout Flow
-        setStatusMessage('Processing test subscription verification...');
+        // Dev / Test Mode Checkout Flow — Razorpay is not configured with
+        // real live credentials, so no real payment gateway is involved.
+        console.warn('[Razorpay] Real credentials not detected — using mock checkout flow. This must never happen in production.');
+        setStatusMessage('Processing test subscription verification (mock mode — no real payment gateway configured)...');
         const mockPaymentId = `pay_test_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
         const mockSignature = `mock_sig_${Date.now()}`;
 
@@ -172,7 +173,7 @@ export default function MembershipPage() {
 
         if (verifyRes.ok && verifyData.success) {
           await refreshSession();
-          router.push(`/payment/success?plan=${encodeURIComponent(plan.name)}&amount=${orderData.planPrice}&payId=${mockPaymentId}`);
+          router.push(`/payment/success?plan=${encodeURIComponent(plan.name)}&amount=${orderData.planPrice}&payId=${mockPaymentId}&mock=1`);
         } else {
           router.push(`/payment/failed?reason=${encodeURIComponent(verifyData.error || 'Test verification failed')}`);
         }
@@ -282,21 +283,10 @@ export default function MembershipPage() {
                         </>
                       ) : (
                         <>
-                          Subscribe Now (Pop-up) <ArrowRight className="w-4 h-4" />
+                          Subscribe Now <ArrowRight className="w-4 h-4" />
                         </>
                       )}
                     </button>
-
-                    {/* Hosted Checkout Link Fallback */}
-                    <a
-                      href={plan.slug === 'youth' || plan.id === 'plan-youth' ? 'https://rzp.io/rzp/ukfX7s2G' : 'https://rzp.io/rzp/6V5lCkn'}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="w-full py-2.5 rounded-xl border border-gray-200 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-600 dark:text-gray-400 font-semibold text-xs transition-all flex items-center justify-center gap-1.5"
-                    >
-                      <span>Pay via Hosted Page</span>
-                      <ExternalLink className="w-3.5 h-3.5 text-gray-400" />
-                    </a>
                   </>
                 )}
               </div>

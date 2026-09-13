@@ -3,7 +3,7 @@
 import React, { Suspense } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
-import { CheckCircle2, Heart, Crown, ArrowRight, Calendar, ShieldCheck } from 'lucide-react';
+import { CheckCircle2, Heart, Crown, ArrowRight, Calendar, ShieldCheck, AlertTriangle } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 
 function PaymentSuccessContent() {
@@ -12,6 +12,7 @@ function PaymentSuccessContent() {
   const planName = searchParams.get('plan') || membership?.plan_name || 'Love Talk Premium';
   const amount = searchParams.get('amount') || '99';
   const payId = searchParams.get('payId') || `pay_${Date.now()}`;
+  const isMock = searchParams.get('mock') === '1';
 
   const startDateStr = membership?.start_date
     ? new Date(membership.start_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
@@ -23,6 +24,12 @@ function PaymentSuccessContent() {
 
   return (
     <div className="space-y-8">
+      {isMock && (
+        <div className="p-3 bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-900/60 rounded-xl text-amber-700 dark:text-amber-400 text-xs font-bold flex items-center justify-center gap-2">
+          <AlertTriangle className="w-4 h-4 flex-shrink-0" />
+          TEST MODE — Razorpay live credentials are not configured. No real payment was taken.
+        </div>
+      )}
       {/* Icon */}
       <div className="w-20 h-20 rounded-full bg-emerald-500/10 text-emerald-500 mx-auto flex items-center justify-center border border-emerald-500/30 animate-in zoom-in">
         <CheckCircle2 className="w-10 h-10" />

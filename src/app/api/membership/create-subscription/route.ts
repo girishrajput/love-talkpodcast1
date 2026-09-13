@@ -1,4 +1,4 @@
-import { POST as createSubscriptionHandler } from '../../razorpay/create-subscription/route';
+import { POST as createSubscriptionHandler } from '../../razorpay/subscription/create/route';
 
 export const dynamic = 'force-dynamic';
 

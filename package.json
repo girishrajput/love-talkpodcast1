@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "next lint",
     "db:seed": "node scripts/seed-db.js",
-    "db:migrate": "node scripts/migrate.js"
+    "db:migrate": "node scripts/migrate.js",
+    "db:clean-test-payments": "node scripts/clean-test-payments.js"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.0",
