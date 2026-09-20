@@ -3,6 +3,8 @@ import { getStoredEpisodes } from '@/lib/data';
 import { hasPremiumAccess } from '@/lib/membership';
 import { getMediaUrl } from '@/lib/storage';
 
+export const dynamic = 'force-dynamic';
+
 export async function GET(
   request: Request,
   { params }: { params: { id: string } }
